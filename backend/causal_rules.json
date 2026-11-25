@@ -1,0 +1,70 @@
+{
+  "window_s": 7200,
+  "min_score": 0.25,
+  "rules": [
+    {
+      "cause": "PHISHING_SMS_IN",
+      "effect": "APK_INSTALL",
+      "w": 0.95,
+      "half_life_s": 300,
+      "constraint": "victim_msisdn_device",
+      "label": "phishing SMS delivered the dropper URL that was then installed"
+    },
+    {
+      "cause": "APK_INSTALL",
+      "effect": "PERM_ACCESSIBILITY",
+      "w": 0.98,
+      "half_life_s": 60,
+      "constraint": "same_ufdr_device",
+      "label": "the installed package requested and obtained privileged permissions"
+    },
+    {
+      "cause": "PERM_ACCESSIBILITY",
+      "effect": "SIM_BIND",
+      "w": 0.85,
+      "half_life_s": 900,
+      "constraint": "victim_msisdn_link",
+      "label": "SMS/accessibility capture enabled the operator-side number takeover"
+    },
+    {
+      "cause": "SIM_BIND",
+      "effect": "OTP_SMS_INTERCEPT",
+      "w": 0.95,
+      "half_life_s": 600,
+      "constraint": "swapped_msisdn",
+      "label": "the re-bound MSISDN delivered the bank OTP to the suspect handset"
+    },
+    {
+      "cause": "OTP_SMS_INTERCEPT",
+      "effect": "UPI_DEBIT_TXN",
+      "w": 0.98,
+      "half_life_s": 120,
+      "constraint": "rrn_or_victim_account",
+      "label": "the intercepted OTP authorised the outbound UPI debit"
+    },
+    {
+      "cause": "UPI_DEBIT_TXN",
+      "effect": "UPI_MULE_HOP",
+      "w": 0.92,
+      "half_life_s": 180,
+      "constraint": "target_equals_actor",
+      "label": "the credited mule account immediately forwarded the funds"
+    },
+    {
+      "cause": "UPI_MULE_HOP",
+      "effect": "ATM_CASH_WDL",
+      "w": 0.9,
+      "half_life_s": 2400,
+      "constraint": "target_equals_actor",
+      "label": "the consolidated balance was withdrawn as cash"
+    },
+    {
+      "cause": "ATM_CASH_WDL",
+      "effect": "CCTV_ANPR_SIGHTING",
+      "w": 0.95,
+      "half_life_s": 60,
+      "constraint": "same_terminal_same_profile",
+      "label": "the cash dispense coincides with a sighting of a vehicle belonging to the same resolved profile at that terminal"
+    }
+  ]
+}

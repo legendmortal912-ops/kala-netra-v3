@@ -1,0 +1,192 @@
+{
+  "case_id": "FIR-0442/2026 (CYBER-PS-NDLS)",
+  "case_title": "Coordinated SIM-Swap & Mule Cash-Out Heist",
+  "clock_offsets_true": {
+    "SRC_CDR_01": 0.0,
+    "SRC_UFDR_01": 45.0,
+    "SRC_WIFI_01": -12.0,
+    "SRC_BANK_01": 0.0,
+    "SRC_CCTV_01": -360.0,
+    "SRC_GPS_01": 45.0
+  },
+  "entity_clusters": [
+    [
+      [
+        "IMEI",
+        "864500112233445"
+      ],
+      [
+        "IMEI",
+        "352099118822771"
+      ],
+      [
+        "IMSI",
+        "404109988776655"
+      ],
+      [
+        "IMSI",
+        "404101122334499"
+      ],
+      [
+        "MAC_ADDR",
+        "A4:5E:60:C8:11:22"
+      ],
+      [
+        "VEHICLE_PLATE",
+        "DL8CAF5031"
+      ],
+      [
+        "VEHICLE_PLATE",
+        "DL8CAF5O31"
+      ]
+    ],
+    [
+      [
+        "IMEI",
+        "358911092233441"
+      ],
+      [
+        "IMSI",
+        "404101122334455"
+      ]
+    ],
+    [
+      [
+        "VEHICLE_PLATE",
+        "DL7CHB3701"
+      ],
+      [
+        "VEHICLE_PLATE",
+        "DL7CHB370L"
+      ]
+    ]
+  ],
+  "causal_edges": [
+    [
+      "SRC_CDR_01#00145",
+      "SRC_BANK_01#00085"
+    ],
+    [
+      "SRC_CDR_01#00145",
+      "SRC_BANK_01#00088"
+    ],
+    [
+      "SRC_BANK_01#00088",
+      "SRC_BANK_01#00089"
+    ],
+    [
+      "SRC_BANK_01#00088",
+      "SRC_BANK_01#00090"
+    ],
+    [
+      "SRC_BANK_01#00088",
+      "SRC_BANK_01#00091"
+    ],
+    [
+      "SRC_CDR_01#00145",
+      "SRC_BANK_01#00092"
+    ],
+    [
+      "SRC_CDR_01#00145",
+      "SRC_BANK_01#00093"
+    ],
+    [
+      "SRC_BANK_01#00093",
+      "SRC_BANK_01#00094"
+    ],
+    [
+      "SRC_BANK_01#00093",
+      "SRC_BANK_01#00096"
+    ],
+    [
+      "SRC_BANK_01#00093",
+      "SRC_BANK_01#00097"
+    ],
+    [
+      "SRC_CDR_01#00145",
+      "SRC_BANK_01#00098"
+    ],
+    [
+      "SRC_CDR_01#00145",
+      "SRC_BANK_01#00099"
+    ],
+    [
+      "SRC_BANK_01#00099",
+      "SRC_BANK_01#00100"
+    ],
+    [
+      "SRC_BANK_01#00099",
+      "SRC_BANK_01#00101"
+    ],
+    [
+      "SRC_BANK_01#00099",
+      "SRC_BANK_01#00102"
+    ],
+    [
+      "SRC_CDR_01#00112",
+      "SRC_UFDR_01#00015"
+    ],
+    [
+      "SRC_UFDR_01#00015",
+      "SRC_UFDR_01#00016"
+    ],
+    [
+      "SRC_UFDR_01#00016",
+      "SRC_CDR_01#00132"
+    ],
+    [
+      "SRC_CDR_01#00132",
+      "SRC_CDR_01#00145"
+    ],
+    [
+      "SRC_BANK_01#00102",
+      "SRC_BANK_01#00126"
+    ],
+    [
+      "SRC_BANK_01#00126",
+      "SRC_CCTV_01#00054"
+    ]
+  ],
+  "spoof_event_id": "SRC_GPS_01#00005",
+  "split_custody_event_id": "SRC_CDR_01#00189",
+  "mule_accounts": [
+    "MULE_01@okaxis",
+    "MULE_02@ybl",
+    "MULE_03@ibl"
+  ],
+  "cashout_account": "CASHOUT_99@paytm",
+  "victim_account": "SBIN0001234_9901",
+  "siphoned_total_inr": 450000.0,
+  "cashout_total_inr": 444000.0,
+  "core_event_ids": {
+    "E_ATTACH_PERSON_CP": "SRC_CDR_01#00080",
+    "E_SPOOF_GPS": "SRC_GPS_01#00005",
+    "E_ATTACH_PERSON_CP2": "SRC_CDR_01#00108",
+    "E_PHISH": "SRC_CDR_01#00112",
+    "E_APK": "SRC_UFDR_01#00015",
+    "E_PERM": "SRC_UFDR_01#00016",
+    "E_SWAP": "SRC_CDR_01#00132",
+    "E_OTP": "SRC_CDR_01#00145",
+    "E_LAST_HOP": "SRC_BANK_01#00102",
+    "E_LEGS": [
+      "SRC_BANK_01#00085",
+      "SRC_BANK_01#00088",
+      "SRC_BANK_01#00092",
+      "SRC_BANK_01#00093",
+      "SRC_BANK_01#00098",
+      "SRC_BANK_01#00099"
+    ],
+    "E_SPLIT_PERSON": "SRC_CDR_01#00189",
+    "E_ATM": "SRC_BANK_01#00126",
+    "E_ANPR": "SRC_CCTV_01#00054"
+  },
+  "record_counts": {
+    "SRC_CDR_01": 222,
+    "SRC_UFDR_01": 34,
+    "SRC_WIFI_01": 154,
+    "SRC_BANK_01": 143,
+    "SRC_CCTV_01": 58,
+    "SRC_GPS_01": 8
+  },
+  "tampered_frame": "cctv_frame_ATM_NP_09_151112.jpg"
+}
