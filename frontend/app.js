@@ -1,14 +1,160 @@
 /* ===== KALA-NETRA V3 — Blended Multi-Tone Forensic Workbench =============== */
 const API = '/api/v1';
-const S = { case:null, view:'overview', data:{}, excluded:new Set(), graph:null, stopGraph:null };
+const STATIC_API = './static_api';
+let STATIC_MODE = location.hostname.endsWith('github.io') || location.protocol === 'file:';
+const S = { case:null, view:'overview', data:{}, excluded:new Set(), graph:null, stopGraph:null,
+            _events:null, _prov:{}, _cf:null };
 
-const api = async (p, o) => {
-  const r = await fetch(API + p, o);
-  if (!r.ok) throw new Error(r.status + ' ' + p);
+const _json = async url => {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(r.status + ' ' + url);
+  const ct = r.headers.get('content-type') || '';
+  if (!ct.includes('json') && !url.endsWith('.json')) throw new Error('non-json response');
   return r.json();
 };
-const post = (p, b) => api(p, {method:'POST', headers:{'Content-Type':'application/json'},
-                              body:JSON.stringify(b)});
+
+const _EVENT_KW = {
+  'sim swap':['SIM_BIND'],'swap':['SIM_BIND'],'clone':['SIM_BIND'],
+  'otp':['OTP_SMS_INTERCEPT','OTP_DISPATCH'],'phish':['PHISHING_SMS_IN','PHISHING_SMS_OUT'],
+  'apk':['APK_INSTALL'],'malware':['APK_INSTALL'],'install':['APK_INSTALL'],
+  'permission':['PERM_ACCESSIBILITY'],'accessibility':['PERM_ACCESSIBILITY'],
+  'withdraw':['ATM_CASH_WDL'],'atm':['ATM_CASH_WDL'],'cash':['ATM_CASH_WDL'],
+  'mule':['UPI_MULE_HOP'],'hop':['UPI_MULE_HOP'],'debit':['UPI_DEBIT_TXN'],
+  'transfer':['UPI_DEBIT_TXN','UPI_MULE_HOP','UPI_CREDIT_TXN'],
+  'upi':['UPI_DEBIT_TXN','UPI_MULE_HOP','UPI_CREDIT_TXN'],
+  'call':['VOICE_CALL'],'sms':['SMS_IN','SMS_OUT'],
+  'wifi':['WIFI_ASSOC','WIFI_DHCPACK','WIFI_DISASSOC','WIFI_DHCP_CLIENT'],
+  'wi-fi':['WIFI_ASSOC','WIFI_DHCPACK','WIFI_DHCP_CLIENT'],
+  'tower':['CELL_ATTACH','IMSI_ATTACH'],'cell':['CELL_ATTACH','IMSI_ATTACH'],
+  'gps':['GPS_PING'],'location':['GPS_PING'],'plate':['CCTV_ANPR_SIGHTING'],
+  'cctv':['CCTV_ANPR_SIGHTING','ATM_DISPENSER_TRIGGER'],'anpr':['CCTV_ANPR_SIGHTING']
+};
+const _TYPE_KW = {imei:'IMEI',handset:'IMEI',phone:'IMEI',burner:'IMEI',
+  imsi:'IMSI',sim:'IMSI',msisdn:'MSISDN',number:'MSISDN',
+  mac:'MAC_ADDR',account:'BANK_ACCT',upi:'UPI_VPA',
+  vehicle:'VEHICLE_PLATE',car:'VEHICLE_PLATE',plate:'VEHICLE_PLATE'};
+
+async function _loadEvents(){
+  if (!S._events) S._events = await _json(STATIC_API + '/events.json');
+  return S._events;
+}
+
+function _staticEventsQuery(qs){
+  return _loadEvents().then(d => {
+    const sp = new URLSearchParams(qs || '');
+    const fid = sp.get('file_id'), et = sp.get('event_type'), q = (sp.get('q')||'').toLowerCase();
+    const limit = Math.min(2000, parseInt(sp.get('limit')||'400',10));
+    const offset = parseInt(sp.get('offset')||'0',10);
+    let evs = d.events;
+    if (fid) evs = evs.filter(e=>e.file_id===fid);
+    if (et)  evs = evs.filter(e=>e.event_type===et);
+    if (q)   evs = evs.filter(e=>(e.narrative+e.actor_id+e.target_id+e.event_id).toLowerCase().includes(q));
+    return { total:evs.length, offset, limit, event_types:d.event_types,
+             events:evs.slice(offset, offset+limit) };
+  });
+}
+
+function _regexParse(q, events){
+  const ql = q.toLowerCase();
+  const minM = ql.match(/(\d+)\s*(minute|min|hour|hr)s?/);
+  const am = ql.match(/\b(?:of|from|after|before|around)\b(.*)$/);
+  const tail = (am && minM) ? am[1] : '';
+  const hitKws = Object.keys(_EVENT_KW).filter(k=>ql.includes(k));
+  const anchorKw = new Set(tail ? hitKws.filter(k=>tail.includes(k)) : []);
+  const wantsAll = /\ball\b\s+\w*\s*events?\b|\beverything\b/.test(ql);
+  let etypes = [...new Set(hitKws.filter(k=>!anchorKw.has(k)).flatMap(k=>_EVENT_KW[k]))].sort();
+  if (wantsAll || !etypes.length) etypes = ['ALL'];
+  const atypes = [...new Set(Object.entries(_TYPE_KW).filter(([k])=>new RegExp('\\b'+k+'\\b').test(ql)).map(([,v])=>v))].sort();
+  const known = new Set();
+  events.forEach(e=>{ known.add(e.actor_id); known.add(e.target_id); });
+  const idRe = /\b(\d{15}|\+?\d{10,13}|[0-9A-F]{2}(?::[0-9A-F]{2}){5}|[A-Z]{2}\d{1,2}[A-Z]{1,3}\d{4}|[\w.\-]+@[a-z]+)\b/gi;
+  const ids = (q.match(idRe)||[]).filter(i=>known.has(i));
+  const iso = ep => new Date(ep*1000).toISOString().slice(0,19)+'Z';
+  const hhmmIso = t => `2026-11-18T${String(t[0]).padStart(2,'0')}:${String(t[1]).padStart(2,'0')}:${String(t[2]||'0').padStart(2,'0')}Z`;
+  let win = null;
+  if (minM) {
+    const span = parseInt(minM[1],10) * (minM[2].startsWith('m') ? 60 : 3600);
+    const anchors = [['sim swap','SIM_BIND'],['swap','SIM_BIND'],['otp','OTP_SMS_INTERCEPT'],
+                     ['withdraw','ATM_CASH_WDL'],['atm','ATM_CASH_WDL'],['phish','PHISHING_SMS_IN']];
+    let anch = null;
+    for (const [kw, tp] of anchors) {
+      if (ql.includes(kw)) { anch = events.find(e=>e.event_type===tp); if (anch) break; }
+    }
+    if (anch) win = [iso(anch.corrected_timestamp_epoch - span), iso(anch.corrected_timestamp_epoch + span)];
+  }
+  if (!win) {
+    const ts = [...q.matchAll(/(\d{1,2}):(\d{2})(?::(\d{2}))?/g)].map(m=>[m[1],m[2],m[3]]);
+    if (ts.length >= 2) win = [hhmmIso(ts[0]), hhmmIso(ts[1])];
+    else if (ts.length === 1) {
+      const b = Date.parse(hhmmIso(ts[0]))/1000;
+      win = [iso(b - 900), iso(b + 900)];
+    }
+  }
+  return { actor_types: atypes.length ? atypes : ['ALL'], actor_ids: ids,
+           time_window_utc: win || ['ALL','ALL'], event_types: etypes,
+           parser: 'deterministic-regex (client)' };
+}
+
+function _staticQuery(question){
+  return _loadEvents().then(d => {
+    const ast = _regexParse(question, d.events);
+    const at = new Set(ast.actor_types), et = new Set(ast.event_types), ids = new Set(ast.actor_ids);
+    const w = ast.time_window_utc;
+    const lo = w[0] !== 'ALL' ? Date.parse(w[0])/1000 : null;
+    const hi = w[1] !== 'ALL' ? Date.parse(w[1])/1000 : null;
+    const hits = d.events.filter(e => {
+      if (!et.has('ALL') && !et.has(e.event_type)) return false;
+      if (!at.has('ALL') && !at.has(e.actor_type) && !at.has(e.target_type)) return false;
+      if (ids.size && !ids.has(e.actor_id) && !ids.has(e.target_id)) return false;
+      if (lo !== null && e.corrected_timestamp_epoch < lo) return false;
+      if (hi !== null && e.corrected_timestamp_epoch > hi) return false;
+      return true;
+    });
+    return {
+      question, ast, match_count: hits.length,
+      events: hits.slice(0,400).map(e => ({
+        event_id:e.event_id, file_id:e.file_id, t:e.corrected_timestamp_epoch,
+        event_type:e.event_type, actor_type:e.actor_type, actor_id:e.actor_id,
+        target_type:e.target_type, target_id:e.target_id, narrative:e.narrative,
+        byte_offset_start:e.byte_offset_start, byte_offset_end:e.byte_offset_end,
+        leaf_sha256:e.leaf_sha256
+      }))
+    };
+  });
+}
+
+const api = async (p, o) => {
+  if (!STATIC_MODE) {
+    const r = await fetch(API + p, o);
+    if (!r.ok) throw new Error(r.status + ' ' + p);
+    const ct = r.headers.get('content-type') || '';
+    if (!ct.includes('json')) throw new Error('non-json response');
+    return r.json();
+  }
+  const [path, qs] = p.split('?');
+  if (path === '/events') return _staticEventsQuery(qs);
+  if (path.startsWith('/provenance/')) {
+    const eid = decodeURIComponent(path.slice('/provenance/'.length));
+    const fid = eid.split('#')[0];
+    if (!S._prov[fid]) S._prov[fid] = await _json(STATIC_API + '/provenance/' + encodeURIComponent(fid) + '.json');
+    if (!S._prov[fid][eid]) throw new Error('unknown event_id');
+    return S._prov[fid][eid];
+  }
+  return _json(STATIC_API + path + '.json');
+};
+const post = async (p, b) => {
+  if (!STATIC_MODE) {
+    return api(p, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(b)});
+  }
+  if (p === '/counterfactual') {
+    if (!S._cf) S._cf = await _json(STATIC_API + '/counterfactual.json');
+    const key = [...(b.excluded_files||[])].sort().join('|');
+    if (!S._cf[key]) throw new Error('subset not precomputed');
+    return S._cf[key];
+  }
+  if (p === '/query') return _staticQuery(b.question || '');
+  throw new Error('unsupported static post: ' + p);
+};
 const $ = s => document.querySelector(s);
 const el = (t, c, h) => { const e=document.createElement(t); if(c)e.className=c;
                           if(h!==undefined)e.innerHTML=h; return e; };
@@ -31,7 +177,7 @@ function toast(msg, ms=2400){
 }
 function busy(on, label){
   const p=$('#railStatus'); p.classList.toggle('busy',on);
-  p.querySelector('span').textContent = on ? (label||'computing…') : 'engine ready';
+  p.querySelector('span').textContent = on ? (label||'computing…') : (STATIC_MODE ? 'static demo ready' : 'engine ready');
 }
 async function copyText(txt, label='value'){
   try { await navigator.clipboard.writeText(txt); toast('Copied '+label); }
@@ -156,11 +302,13 @@ async function boot(){
                  'reconstructing causal arborescence…'];
   let i=0; const t=setInterval(()=>{ log.textContent = lines[i++ % lines.length]; }, 420);
   try {
-    S.case = await api('/case');
+    try { S.case = await api('/case'); }
+    catch { STATIC_MODE = true; S.case = await api('/case'); }
     S.data.timeline = await api('/timeline');
     S.data.fin = await api('/finance');
   } catch(e){ log.textContent = 'engine unreachable: ' + e.message; return; }
   clearInterval(t);
+  busy(false);
   $('#tbCase').textContent = S.case.case_title;
   $('#tbSub').textContent = S.case.case_id + '  ·  ' + S.case.counts.events +
     ' correlated records  ·  pipeline ' + S.case.runtime_ms.toFixed(0) + ' ms';
@@ -354,7 +502,8 @@ VIEWS.overview = async () => {
     });
     row.appendChild(left);
     const img = el('div','card subcard');
-    img.innerHTML = '<h3>Seized frame</h3><img src="'+API+'/frame/'+encodeURIComponent(c.media[0].file)+
+    const frameSrc = (STATIC_MODE ? STATIC_API + '/frame/' : API + '/frame/') + encodeURIComponent(c.media[0].file);
+    img.innerHTML = '<h3>Seized frame</h3><img src="'+frameSrc+
       '" style="width:100%;border-radius:10px;border:1px solid var(--line)"/>'+
       '<div class="sm" style="margin-top:8px">'+esc(c.media[0].file)+'</div>';
     row.appendChild(img);
@@ -1397,7 +1546,8 @@ async function provenance(eid){
 $('#btnPdf').onclick = async () => {
   busy(true,'rendering dossier…'); toast('building BSA §63(4)(c) dossier…');
   try{
-    const r = await fetch(API + '/export-section63-pdf');
+    const pdfUrl = STATIC_MODE ? (STATIC_API + '/KALA_NETRA_BSA_Sec63_Dossier.pdf') : (API + '/export-section63-pdf');
+    const r = await fetch(pdfUrl);
     const blob = await r.blob();
     const u = URL.createObjectURL(blob);
     const a = document.createElement('a');
